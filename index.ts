@@ -12,6 +12,7 @@ import {
   type MobileUsageData,
   type QueryOptions
 } from './src/database/service.js';
+import { initializeKafkaProducer, sendToKafka, closeKafkaProducer, isKafkaConnected } from './src/kafka/producer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,11 +20,17 @@ const PORT = process.env.PORT || 3000;
 // Initialize database on startup
 initializeDatabase();
 
+// Initialize Kafka producer
+initializeKafkaProducer().catch(err => {
+  console.error('⚠️  Failed to initialize Kafka producer:', err);
+  console.log('📝 API will continue without Kafka integration');
+});
+
 // Middleware to parse JSON bodies
 app.use(express.json());
 
 // POST endpoint for /mobile-usage
-app.post('/mobile-usage', (req: Request, res: Response) => {
+app.post('/mobile-usage', async (req: Request, res: Response) => {
   try {
     const { device_id, usage, start_time, end_time, package_type }: MobileUsageData = req.body;
 
@@ -84,11 +91,13 @@ app.post('/mobile-usage', (req: Request, res: Response) => {
 
     console.log('✅ Saved mobile usage data:', savedRecord);
 
-    // TODO: Send data to Kafka topic
-    // await producer.send({
-    //   topic: 'mobile-usage',
-    //   messages: [{ value: JSON.stringify(usageData) }]
-    // });
+    // Send data to Kafka topic
+    await sendToKafka('mobile-usage', {
+      device_id: usageData.device_id,
+      usage: usageData.usage,
+      start_time: usageData.start_time,
+      end_time: usageData.end_time
+    });
 
     // Return success response
     return res.status(201).json({
@@ -300,19 +309,22 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({
     status: 'healthy',
     database: 'connected',
+    kafka: isKafkaConnected() ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down gracefully...');
+  await closeKafkaProducer();
   closeDatabase();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down gracefully...');
+  await closeKafkaProducer();
   closeDatabase();
   process.exit(0);
 });
