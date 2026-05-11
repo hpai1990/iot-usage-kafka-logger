@@ -22,7 +22,6 @@ else
     echo "❌ Cannot connect to Kafka at localhost:29092"
     echo ""
     echo "Make sure Kafka is running:"
-    echo "  cd /Users/hrishikeshpai/Documents/git_repos_old/fixium-mobile-consumer"
     echo "  podman-compose up -d"
     echo ""
     exit 1
